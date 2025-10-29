@@ -14,88 +14,80 @@ typedef struct tempResults_t {
 // ###############################################
 
 static uint32_t getMeasurement20BitFromBuffer(const uint8_t* buffer);
-
 static uint32_t getMeasurement16itFromBuffer(const uint8_t* buffer);
-
-static int32_t readTrimmingValues(saphBmeDevice_t* device, uint8_t* buffer);
-
-static inline void setTemperatureTrimmingValues(saphBmeDevice_t* device, const uint8_t* buffer);
-
-static inline void setPressureTrimmingValues(saphBmeDevice_t* device, const uint8_t* buffer);
-
-static inline void setHumidityTrimmingValues(saphBmeDevice_t* device, const uint8_t* buffer);
-
-static tempResults_t compensateTemperature(saphBmeDevice_t* device, int32_t rawTemperature);
-
-static uint32_t compensatePressure(saphBmeDevice_t* device, int32_t rawPressure, int32_t fineTemperature);
-
-static uint32_t compensateHumidity(saphBmeDevice_t* device, int32_t rawHumidity, int32_t fineTemperature);
+static int32_t readTrimmingValues(bmeDevice_t* device, uint8_t* buffer);
+static inline void setTemperatureTrimmingValues(bmeDevice_t* device, const uint8_t* buffer);
+static inline void setPressureTrimmingValues(bmeDevice_t* device, const uint8_t* buffer);
+static inline void setHumidityTrimmingValues(bmeDevice_t* device, const uint8_t* buffer);
+static tempResults_t compensateTemperature(bmeDevice_t* device, int32_t rawTemperature);
+static uint32_t compensatePressure(bmeDevice_t* device, int32_t rawPressure, int32_t fineTemperature);
+static uint32_t compensateHumidity(bmeDevice_t* device, int32_t rawHumidity, int32_t fineTemperature);
 
 // ###############################################
 // Implementations
 // ###############################################
 
-int32_t saphBme280_internal_writeToRegister(saphBmeDevice_t* device, uint8_t* buffer, uint32_t bufferSize) {
+int32_t bme280_internal_writeToRegister(bmeDevice_t* device, uint8_t* buffer, uint32_t bufferSize) {
     int32_t commResult = i2c_handler_write(device->address, buffer, bufferSize);
     if (commResult != bufferSize) {
-        return saphBme280_internal_getErrorCode(commResult, true);
+        return bme280_internal_getErrorCode(commResult, true);
     }
-    return SAPH_BME280_NO_ERROR;
+    return BME280_NO_ERROR;
 }
 
 
-int32_t saphBme280_internal_readFromRegister(saphBmeDevice_t* device, uint8_t regAddress, uint8_t* readingBuffer,
+int32_t bme280_internal_readFromRegister(bmeDevice_t* device, uint8_t regAddress, uint8_t* readingBuffer,
                                              uint32_t readAmount) {
     int32_t commResult = 0;
-    if ((commResult = saphBme280_internal_writeToRegister(device, &regAddress, 1)) != SAPH_BME280_NO_ERROR) {
+    if ((commResult = bme280_internal_writeToRegister(device, &regAddress, 1)) != BME280_NO_ERROR) {
         return commResult;
     }
 
     commResult = i2c_handler_read(device->address, readingBuffer, readAmount);
     if (commResult != readAmount) {
-        return saphBme280_internal_getErrorCode(commResult, false);
+        return bme280_internal_getErrorCode(commResult, false);
     }
 
-    return SAPH_BME280_NO_ERROR;
+    return BME280_NO_ERROR;
 }
 
 #define BURST_READ_TRIM_FIRST 25
 #define BURST_READ_TRIM_SECOND 1
 #define BURST_READ_TRIM_THIRD 7
 
-int32_t saphBme280_internal_readTrimmingValues(saphBmeDevice_t* device) {
+int32_t bme280_internal_readTrimmingValues(bmeDevice_t* device) {
     uint8_t buffer[BURST_READ_TRIM_FIRST + BURST_READ_TRIM_SECOND + BURST_READ_TRIM_THIRD];
     int32_t errorCode = readTrimmingValues(device, buffer);
-    if (errorCode != SAPH_BME280_NO_ERROR) {
+    if (errorCode != BME280_NO_ERROR) {
         return errorCode;
     }
     setTemperatureTrimmingValues(device, buffer);
     setPressureTrimmingValues(device, buffer);
     setHumidityTrimmingValues(device, buffer);
 
-    return SAPH_BME280_NO_ERROR;
+    return BME280_NO_ERROR;
 }
 
 #define MEASUREMENT_DATA_AMOUNT 8
 #define REG_PRESSURE_START_ADDR 0xF7
 
-int32_t saphBme280_internal_getRawMeasurement(saphBmeDevice_t* device, saphBmeRawMeasurements_t* result) {
+int32_t bme280_internal_getRawMeasurement(bmeDevice_t* device, bmeRawMeasurements_t* result) {
     uint8_t receiveBuffer[MEASUREMENT_DATA_AMOUNT];
-    int32_t commResult = saphBme280_internal_readFromRegister(device, REG_PRESSURE_START_ADDR, (uint8_t*) receiveBuffer,
+    int32_t commResult = bme280_internal_readFromRegister(device, REG_PRESSURE_START_ADDR, (uint8_t*) receiveBuffer,
                                                               MEASUREMENT_DATA_AMOUNT);
-    if (commResult != SAPH_BME280_NO_ERROR) {
+    if (commResult != BME280_NO_ERROR) {
         return commResult;
     }
 
     result->pressure = getMeasurement20BitFromBuffer(receiveBuffer);
     result->temperature = getMeasurement20BitFromBuffer(receiveBuffer + 3);
     result->humidity = getMeasurement16itFromBuffer(receiveBuffer + 6);
-    return SAPH_BME280_NO_ERROR;
+    return BME280_NO_ERROR;
 }
 
-saphBmeMeasurements_t
-saphBme280_internal_compensateMeasurements(saphBmeDevice_t* device, saphBmeRawMeasurements_t* rawMeasurements) {
-    saphBmeMeasurements_t result;
+bmeMeasurements_t
+saphBme280_internal_compensateMeasurements(bmeDevice_t* device, bmeRawMeasurements_t* rawMeasurements) {
+    bmeMeasurements_t result;
     tempResults_t temps = compensateTemperature(device, rawMeasurements->temperature);
     result.temperature = temps.temperature;
     result.pressure = compensatePressure(device, rawMeasurements->pressure, temps.fineTemperature);
@@ -103,16 +95,16 @@ saphBme280_internal_compensateMeasurements(saphBmeDevice_t* device, saphBmeRawMe
     return result;
 }
 
-int32_t saphBme280_internal_getErrorCode(int32_t commResult, bool wasWriting) {
+int32_t bme280_internal_getErrorCode(int32_t commResult, bool wasWriting) {
     if (wasWriting) {
         if (commResult >= 0) {
-            return SAPH_BME280_COMM_ERROR_WRITE_AMOUNT;
+            return BME280_COMM_ERROR_WRITE_AMOUNT;
         } else {
             return commResult;
         }
     } else {
         if (commResult >= 0) {
-            return SAPH_BME280_COMM_ERROR_READ_AMOUNT;
+            return BME280_COMM_ERROR_READ_AMOUNT;
         } else {
             return commResult;
         }
@@ -133,29 +125,29 @@ static uint32_t getMeasurement16itFromBuffer(const uint8_t* buffer) {
 }
 
 
-static int32_t readTrimmingValues(saphBmeDevice_t* device, uint8_t* buffer) {
+static int32_t readTrimmingValues(bmeDevice_t* device, uint8_t* buffer) {
     uint8_t startingAddressFirst = 0x88;
     uint8_t startingAddressSecond = 0xA1;
     uint8_t startingAddressThird = 0xE1;
-    int32_t errorCode = saphBme280_internal_readFromRegister(device, startingAddressFirst, buffer,
+    int32_t errorCode = bme280_internal_readFromRegister(device, startingAddressFirst, buffer,
                                                              BURST_READ_TRIM_FIRST);
-    if (errorCode != SAPH_BME280_NO_ERROR) {
+    if (errorCode != BME280_NO_ERROR) {
         return errorCode;
     }
 
-    errorCode = saphBme280_internal_readFromRegister(device, startingAddressSecond, buffer + BURST_READ_TRIM_FIRST,
+    errorCode = bme280_internal_readFromRegister(device, startingAddressSecond, buffer + BURST_READ_TRIM_FIRST,
                                                      BURST_READ_TRIM_SECOND);
-    if (errorCode != SAPH_BME280_NO_ERROR) {
+    if (errorCode != BME280_NO_ERROR) {
         return errorCode;
     }
-    errorCode = saphBme280_internal_readFromRegister(device, startingAddressThird,
+    errorCode = bme280_internal_readFromRegister(device, startingAddressThird,
                                                      buffer + BURST_READ_TRIM_FIRST + BURST_READ_TRIM_SECOND,
                                                      BURST_READ_TRIM_THIRD);
     return errorCode;
 }
 
-static tempResults_t compensateTemperature(saphBmeDevice_t* device, int32_t rawTemperature) {
-    saphBmeTrimmingValues_t* trims = &(device->trimmingValues);
+static tempResults_t compensateTemperature(bmeDevice_t* device, int32_t rawTemperature) {
+    bmeTrimmingValues_t* trims = &(device->trimmingValues);
     int32_t value1, value2;
     value1 = (rawTemperature >> 3) - (((int32_t) trims->dig_T1) << 1);
     value1 = (value1 * ((int32_t) trims->dig_T2)) >> 11;
@@ -167,8 +159,8 @@ static tempResults_t compensateTemperature(saphBmeDevice_t* device, int32_t rawT
     return result;
 }
 
-static uint32_t compensatePressure(saphBmeDevice_t* device, int32_t rawPressure, int32_t fineTemperature) {
-    saphBmeTrimmingValues_t* trims = &(device->trimmingValues);
+static uint32_t compensatePressure(bmeDevice_t* device, int32_t rawPressure, int32_t fineTemperature) {
+    bmeTrimmingValues_t* trims = &(device->trimmingValues);
     int64_t value1, value2, pressure;
     value1 = ((int64_t) fineTemperature) - 128000;
     value2 = value1 * value1 * ((int64_t) trims->dig_P6);
@@ -188,8 +180,8 @@ static uint32_t compensatePressure(saphBmeDevice_t* device, int32_t rawPressure,
     return result;
 }
 
-static uint32_t compensateHumidity(saphBmeDevice_t* device, int32_t rawHumidity, int32_t fineTemperature) {
-    saphBmeTrimmingValues_t* trims = &(device->trimmingValues);
+static uint32_t compensateHumidity(bmeDevice_t* device, int32_t rawHumidity, int32_t fineTemperature) {
+    bmeTrimmingValues_t* trims = &(device->trimmingValues);
     int32_t variable; //I don't know what the datasheet was trying to tell me with their og name
     variable = (fineTemperature - ((int32_t) 76800));
     variable =
@@ -202,7 +194,7 @@ static uint32_t compensateHumidity(saphBmeDevice_t* device, int32_t rawHumidity,
     return (uint32_t) (variable >> 12);
 }
 
-static inline void setTemperatureTrimmingValues(saphBmeDevice_t* device, const uint8_t* buffer) {
+static inline void setTemperatureTrimmingValues(bmeDevice_t* device, const uint8_t* buffer) {
     uint8_t i = 0;
     device->trimmingValues.dig_T1 = (buffer[i + 1] << 8) | buffer[i];
     i += 2;
@@ -211,7 +203,7 @@ static inline void setTemperatureTrimmingValues(saphBmeDevice_t* device, const u
     device->trimmingValues.dig_T3 = (buffer[i + 1] << 8) | buffer[i];
 }
 
-static inline void setPressureTrimmingValues(saphBmeDevice_t* device, const uint8_t* buffer) {
+static inline void setPressureTrimmingValues(bmeDevice_t* device, const uint8_t* buffer) {
     uint8_t i = 6;
     device->trimmingValues.dig_P1 = (buffer[i + 1] << 8) + buffer[i];
     i += 2;
@@ -234,7 +226,7 @@ static inline void setPressureTrimmingValues(saphBmeDevice_t* device, const uint
 
 #define BITMASK_LOWEST_FOUR 0x0F
 
-static inline void setHumidityTrimmingValues(saphBmeDevice_t* device, const uint8_t* buffer) {
+static inline void setHumidityTrimmingValues(bmeDevice_t* device, const uint8_t* buffer) {
     device->trimmingValues.dig_H1 = buffer[25];
     device->trimmingValues.dig_H2 = (buffer[27] << 8) + buffer[26];
     device->trimmingValues.dig_H3 = buffer[28];
