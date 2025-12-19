@@ -86,7 +86,7 @@ int32_t bme280_internal_getRawMeasurement(bmeDevice_t* device, bmeRawMeasurement
 }
 
 bmeMeasurements_t
-saphBme280_internal_compensateMeasurements(bmeDevice_t* device, bmeRawMeasurements_t* rawMeasurements) {
+bme280_internal_compensateMeasurements(bmeDevice_t* device, bmeRawMeasurements_t* rawMeasurements) {
     bmeMeasurements_t result;
     tempResults_t temps = compensateTemperature(device, rawMeasurements->temperature);
     result.temperature = temps.temperature;
